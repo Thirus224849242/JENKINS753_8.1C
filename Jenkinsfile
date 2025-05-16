@@ -7,7 +7,7 @@ pipeline {
             steps {
                 echo 'Stage: Build'
                 echo 'Tool: Maven'
-                echo 'Action: Use a build automation tool to clean, compile, and package the application code.'
+                echo 'Action: Use a build automation tool to clean, compile, and package the application code test'
             }
         }
  
