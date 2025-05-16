@@ -3,81 +3,83 @@ pipeline {
 
     environment {
         MAVEN_HOME = '/usr/share/maven'
-        SONAR_HOST_URL = 'http://localhost:9000'  // SonarQube server URL
-        SONAR_LOGIN = credentials('sonar-token')  // Jenkins credential for SonarQube
+        SONAR_HOST_URL = 'http://localhost:9000'
+        SONAR_LOGIN = credentials('sonar-token')
     }
 
     stages {
-        // Stage 1: Build
         stage('Build') {
             steps {
-                Description: Build the code using a build automation tool to compile and package
-your code. You need to specify at least one build automation tool.
-                Tool: Maven
+                echo 'Building the project...'
+                sh 'mvn clean package'
             }
         }
 
-        // Stage 2: Unit and Integration Tests
         stage('Unit and Integration Tests') {
             steps {
-                Description: Run unit tests to ensure the code functions as
-expected and run integration tests to ensure the different components of the
-application work together as expected.
-                Tool: JUnit
+                echo 'Running tests...'
+                sh 'mvn test'
             }
             post {
                 always {
-                    Description: Publish JUnit test results (Surefire reports).
+                    junit 'target/surefire-reports/*.xml'
                 }
             }
         }
 
-        // Stage 3: Code Analysis
         stage('Code Analysis') {
             steps {
-                Description:  Integrate a code analysis tool to analyse the code and ensure
-it meets industry standards.
-                Tool: SonarQube
-            }
-        }
-
-        // Stage 4: Security Scan
-        stage('Security Scan') {
-            steps {
-                Description: Perform a security scan on the code using a tool to identify
-any vulnerabilities.
-                Tool: OWASP Dependency-Check
-            }
-            post {
-                always {
-                    Description: Publish the generated security report in HTML format.
+                echo 'Analyzing code with SonarQube...'
+                withSonarQubeEnv('SonarQube') {
+                    sh 'mvn sonar:sonar -Dsonar.projectKey=my-app -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_LOGIN'
                 }
             }
         }
 
-        // Stage 5: Deploy to Staging
+        stage('Security Scan') {
+            steps {
+                echo 'Running OWASP Dependency-Check...'
+                sh '''
+                mkdir -p dependency-check
+                dependency-check.sh --project my-app --scan . --format XML --out dependency-check
+                '''
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'dependency-check',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'Security Report'
+                    ])
+                }
+            }
+        }
+
         stage('Deploy to Staging') {
             steps {
-                Description: Deploy the application to a staging server .
-                Tool: AWS EC2
+                echo 'Deploying to staging server...'
+                sh '''
+                scp target/my-app.jar ec2-user@staging-ec2:/home/ec2-user/
+                ssh ec2-user@staging-ec2 "nohup java -jar /home/ec2-user/my-app.jar > app.log 2>&1 &"
+                '''
             }
         }
 
-        // Stage 6: Integration Tests on Staging
         stage('Integration Tests on Staging') {
             steps {
-                Description: Run integration tests on the staging
-environment to ensure the application functions as expected in a production-like
-environment.
-                Tool: JUnit
+                echo 'Running staging integration tests...'
+                sh 'mvn verify -Pstaging-tests'
             }
         }
 
-        // Stage 7: Deploy to Production
         stage('Deploy to Production') {
             steps {
-                Description: Deploy the application to a production server.
-                Tool: AWS EC2
+                input message: 'Approve Deployment to Production?'
+                echo 'Deploying to production server...'
+                sh '''
+                scp target/my-app.jar ec2-user@prod-ec2:/home/ec2-user/
+                ssh ec2-user@prod-ec2 "pkill -f my-app.jar || true && nohup java -jar /home/ec2-user/my-app.jar > app.log 2>&1 &"
+                '''
             }
         }
     }
