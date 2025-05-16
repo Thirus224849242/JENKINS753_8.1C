@@ -3,83 +3,74 @@ pipeline {
 
     environment {
         MAVEN_HOME = '/usr/share/maven'
-        SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_LOGIN = credentials('sonar-token')
+        SONAR_HOST_URL = 'http://localhost:9000'  // SonarQube server URL
+        SONAR_LOGIN = credentials('sonar-token')  // Jenkins credential for SonarQube
     }
 
     stages {
+        // Stage 1: Build
         stage('Build') {
             steps {
-                echo 'Building the project...'
-                sh 'mvn clean package'
+                Description: Use Maven to clean, compile, and package the project.
+                Tool: Maven
             }
         }
 
+        // Stage 2: Unit and Integration Tests
         stage('Unit and Integration Tests') {
             steps {
-                echo 'Running tests...'
-                sh 'mvn test'
+                Description: Run JUnit-based unit and integration tests using Maven.
+                Tool: JUnit
             }
             post {
                 always {
-                    junit 'target/surefire-reports/*.xml'
+                    Description: Publish JUnit test results (Surefire reports).
                 }
             }
         }
 
+        // Stage 3: Code Analysis
         stage('Code Analysis') {
             steps {
-                echo 'Analyzing code with SonarQube...'
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn sonar:sonar -Dsonar.projectKey=my-app -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_LOGIN'
-                }
+                Description: Run static code analysis using SonarQube integrated with Jenkins.
+                Tool: SonarQube
             }
         }
 
+        // Stage 4: Security Scan
         stage('Security Scan') {
             steps {
-                echo 'Running OWASP Dependency-Check...'
-                sh '''
-                mkdir -p dependency-check
-                dependency-check.sh --project my-app --scan . --format XML --out dependency-check
-                '''
+                Description: Perform a security scan on project dependencies using OWASP Dependency-Check.
+                Tool: OWASP Dependency-Check
             }
             post {
                 always {
-                    publishHTML([
-                        reportDir: 'dependency-check',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'Security Report'
-                    ])
+                    Description: Publish the generated security report in HTML format.
                 }
             }
         }
 
+        // Stage 5: Deploy to Staging
         stage('Deploy to Staging') {
             steps {
-                echo 'Deploying to staging server...'
-                sh '''
-                scp target/my-app.jar ec2-user@staging-ec2:/home/ec2-user/
-                ssh ec2-user@staging-ec2 "nohup java -jar /home/ec2-user/my-app.jar > app.log 2>&1 &"
-                '''
+                Description: Deploy the packaged application to an AWS EC2 staging instance.
+                Tool: AWS EC2
             }
         }
 
+        // Stage 6: Integration Tests on Staging
         stage('Integration Tests on Staging') {
             steps {
-                echo 'Running staging integration tests...'
-                sh 'mvn verify -Pstaging-tests'
+                Description: Run environment-specific integration tests on the staging server using Maven.
+                Tool: JUnit
             }
         }
 
+        // Stage 7: Deploy to Production
         stage('Deploy to Production') {
             steps {
-                input message: 'Approve Deployment to Production?'
-                echo 'Deploying to production server...'
-                sh '''
-                scp target/my-app.jar ec2-user@prod-ec2:/home/ec2-user/
-                ssh ec2-user@prod-ec2 "pkill -f my-app.jar || true && nohup java -jar /home/ec2-user/my-app.jar > app.log 2>&1 &"
-                '''
+                Description: Deploy the application to the production AWS EC2 server after manual approval.
+                Tool: AWS EC2
             }
         }
     }
